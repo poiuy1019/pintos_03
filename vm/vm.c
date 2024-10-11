@@ -140,12 +140,12 @@ vm_handle_wp (struct page *page UNUSED) {
 bool
 vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
+	struct supplemental_page_table *spt = &thread_current ()->spt;
 	struct page *page = NULL;
 	
 	// check validation of fault addr 
 	// 완성된 예외처리는 아님, 추가해주거나 빼줘야할수도
-	check_validation_of_fault_addr(addr);
+	check_validation_of_fault_addr(addr, spt);
 	
 	/* TODO: Your code goes here */
 	// 1. page(frame) allocation
@@ -155,11 +155,11 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 }
 
 bool
-check_validation_of_fault_addr (void *fault_addr) {
+check_validation_of_fault_addr (void *fault_addr, struct supplemental_page_table *spt) {
 	 // 주소가 사용자 영역에 있는지 확인고 아니면 exit || 주소가 프로세스의 주소 공간 내에 있는지 확인 || 주소가 이미 매핑되어 있지 않은지 확인 || 주소가 유효한 vm_entry에 해당하는지 확인 (SPT에서 검색)
 	user_memory_valid(fault_addr);
-	struct vm_entry *vme = find_vme(fault_addr);
-    if (fault_addr == NULL || !is_user_vaddr(fault_addr) || fault_addr >= KERN_BASE || vme == NULL) {
+	struct page *find_page = spt_find_page(spt, fault_addr);
+    if (fault_addr == NULL || !is_user_vaddr(fault_addr) || fault_addr >= KERN_BASE || find_page == NULL) {
 		exit(-1);
         return false;
     }
