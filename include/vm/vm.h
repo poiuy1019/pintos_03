@@ -44,27 +44,25 @@ struct thread;
  * uninit_page, file_page, anon_page, and page cache (project4).
  * DO NOT REMOVE/MODIFY PREDEFINED MEMBER OF THIS STRUCTURE. */
 struct page {
-	const struct page_operations *operations;
+	const struct page_operations *operations;	//파악못함
 	void *va;              /* Address in terms of user space */
 	struct frame *frame;   /* Back reference for frame */
 
 	/* Your implementation */
 	bool writable;
 	enum vm_type type;
-	size_t swap_slot;
+	size_t swap_slot;	//스왑 할 때 필요
 	struct hash_elem elem;
-	bool is_loaded; //물리 메모리의 탑재 여부
-	size_t offset;
-	size_t read_bytes;
-	size_t zero_bytes;
-	struct list_elem mmap_elem;
+	bool is_loaded; //물리 메모리의 탑재 여부, 아직 역할 모름.
 
+	struct list_elem mmap_elem;
+	
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
-	union {
+	union {		//스왑할 때 필요
 		struct uninit_page uninit;
 		struct anon_page anon;
-		struct file_page file;
+		struct file_page file;	//file backed page
 #ifdef EFILESYS
 		struct page_cache page_cache;
 #endif
@@ -120,11 +118,8 @@ struct page_operations {
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
-struct supplemental_page_table {	//페이지 테이블을 보조하는 추가적인 데이터 구조.
-// 페이지 테이블이 가상 주소와 물리 주소를 매핑하는데 초점을 맞춘다면, SPT는 페이지가 메모리에 없을 때 페이지의 상태나 위치에 대한 추가 정보를 저장하고 관리
+struct supplemental_page_table {
 	struct hash spt;
-	//왜 struct hash *이 아닌 struct hash로 선언했나?
-	//해시 테이블 자체를 가리키는 포인터보다는 struct hash 자체를 포함하는게 더 직관적이다.
 };
 
 #include "threads/thread.h"
