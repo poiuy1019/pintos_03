@@ -42,7 +42,6 @@ struct inode {
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
-void user_memory_valid(void *r);
 struct file *get_file_by_descriptor(int fd);
 struct lock syscall_lock;
 
