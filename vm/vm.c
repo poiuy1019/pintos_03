@@ -1,8 +1,11 @@
 /* vm.c: Generic interface for virtual memory objects. */
 
 #include "threads/malloc.h"
+#include "threads/vaddr.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "userprog/syscall.h" 
+#include "userprog/process.c" 
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -111,8 +114,13 @@ vm_evict_frame (void) {
 static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
-	/* TODO: Fill this function. */
+	// TODO: victim page
+	// frame malloc 으로 할당 후 page, kva 할당
+	frame = malloc(sizeof(struct frame));
+	ASSERT(frame != NULL);
 
+	frame->page = palloc_get_page(PAL_ZERO);
+	frame->kva = ptov(frame->page->va);
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
 	return frame;
@@ -130,15 +138,33 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
+vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
-	/* TODO: Validate the fault */
+	
+	// check validation of fault addr 
+	// 완성된 예외처리는 아님, 추가해주거나 빼줘야할수도
+	check_validation_of_fault_addr(addr);
+	
 	/* TODO: Your code goes here */
-
+	// 1. page(frame) allocation
+	// 2. data load file(disk) -> memory
+	// 3. page table set up
 	return vm_do_claim_page (page);
 }
+
+bool
+check_validation_of_fault_addr (void *fault_addr) {
+	 // 주소가 사용자 영역에 있는지 확인고 아니면 exit || 주소가 프로세스의 주소 공간 내에 있는지 확인 || 주소가 이미 매핑되어 있지 않은지 확인 || 주소가 유효한 vm_entry에 해당하는지 확인 (SPT에서 검색)
+	user_memory_valid(fault_addr);
+	struct vm_entry *vme = find_vme(fault_addr);
+    if (fault_addr == NULL || !is_user_vaddr(fault_addr) || fault_addr >= KERN_BASE || vme == NULL) {
+		exit(-1);
+        return false;
+    }
+}
+
 
 /* Free the page.
  * DO NOT MODIFY THIS FUNCTION. */
@@ -167,6 +193,9 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	if (!install_page(page->va, frame->kva, true)) {
+		return false;
+	}
 
 	return swap_in (page, frame->kva);
 }
