@@ -4,6 +4,11 @@
 #include "threads/vaddr.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "hash.h"
+
+static uint64_t spt_hash_func(const struct hash_elem *e, void *aux);
+static bool spt_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux);
+
 #include "userprog/syscall.h" 
 #include "userprog/process.c" 
 
@@ -68,8 +73,17 @@ struct page *
 spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: Fill this function. */
+	
+	struct page page_temp;
 
-	return page;
+	struct hash_elem *elem = hash_find(&spt->spt, &page_temp.elem);
+
+	if (elem == NULL) {
+		return NULL;
+	}
+
+	struct page *found_page = hash_entry(elem, struct page, elem);
+	return found_page;
 }
 
 /* Insert PAGE into spt with validation. */
@@ -78,6 +92,23 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
 	int succ = false;
 	/* TODO: Fill this function. */
+
+	ASSERT(spt != NULL);
+	ASSERT(page != NULL);
+
+	struct hash_elem *result = hash_insert(&spt->spt, &page->elem);
+
+	if(result != NULL) {
+		return succ;
+	} else {
+		succ = true;
+	}
+
+	page->is_loaded = false;
+	page->swap_slot = -1;
+	page->offset = 0;
+	page->read_bytes = 0;
+	page->zero_bytes = 0;
 
 	return succ;
 }
@@ -203,6 +234,10 @@ vm_do_claim_page (struct page *page) {
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+	ASSERT(spt != NULL);
+
+	return hash_init(&spt->spt, spt_hash_func, spt_less_func, NULL);
+	
 }
 
 /* Copy supplemental page table from src to dst */
@@ -216,4 +251,22 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+}
+
+/*Hash function for the supplemental page table(SPT)*/
+static uint64_t
+spt_hash_func(const struct hash_elem *e, void *aux) {
+	/*e는 해시 테이블의 요소로, 가상 주소(va)를 해시하여 반환*/
+	const struct page *page = hash_entry(e, struct page, elem);
+	return hash_int(page->va); 
+}
+
+
+/*Comparison function for the supplemental page table(SPT)*/
+static bool
+spt_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux) {
+	/*a와 b는 각각 해시 테이블 요소로, 가상 주소를 비교하여 반환*/
+	const struct page *page_a = hash_entry(a, struct page, elem);
+	const struct page *page_b = hash_entry(b, struct page, elem);
+	return page_a->va < page_b->va;
 }

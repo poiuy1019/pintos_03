@@ -7,6 +7,9 @@ struct page;
 enum vm_type;
 
 struct file_page {
+	size_t offset;	//파일 읽을 때 필요
+	size_t read_bytes;	//파일 읽을 때 필요
+	size_t zero_bytes;	//파일 읽을 때 필요
 };
 
 void vm_file_init (void);
