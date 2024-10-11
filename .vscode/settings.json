@@ -27,6 +27,8 @@
         "xutility": "c",
         "uninit.h": "c",
         "io.h": "c",
-        "vm.h": "c"
+        "vm.h": "c",
+        "malloc.h": "c",
+        "inode.h": "c"
     }
 }
