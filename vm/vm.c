@@ -108,9 +108,9 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 
 	page->is_loaded = false;
 	page->swap_slot = -1;
-	page->offset = 0;
-	page->read_bytes = 0;
-	page->zero_bytes = 0;
+	page->file.offset = 0;
+	page->file.read_bytes = 0;
+	page->file.zero_bytes = 0;
 
 	return succ;
 }
