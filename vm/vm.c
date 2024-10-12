@@ -42,6 +42,10 @@ page_get_type (struct page *page) {
 	}
 }
 
+static bool page_init(struct page *page) {
+
+}
+
 /* Helpers */
 static struct frame *vm_get_victim (void);
 static bool vm_do_claim_page (struct page *page);
@@ -244,10 +248,25 @@ bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 		struct supplemental_page_table *src UNUSED) {
 	//do_fork에서 사용
+	struct hash_iterator page_iterator;	//for문의 i와 같은 역할
+	hash_first(&page_iterator, &src->spt);	//page_iterator가 해시 테이블의 첫 번쨰 요소를 가리킴
 
+	while (hash_next(&page_iterator)) {		//모든 버킷에 걸쳐 해시 테이블의 모든 요소를 순차적으로 탐색
+		struct page *original_page = hash_entry(hash_cur(&page_iterator), struct page, elem);
 
+		//페이지 복사
+		struct page *new_page = page_copy(original_page);
+		if (new_page == NULL) {
+			return false;
+		}
 
-	
+		//자식 프로세스의 SPT에 새로운 페이지 삽입
+		if (!hash_insert(&dst->spt, &new_page->elem)) {
+			free(new_page);
+			return false;
+		}
+	}
+	return true;
 }
 
 /* Free the resource hold by the supplemental page table */
@@ -283,3 +302,50 @@ spt_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux) {
 	return page_a->va < page_b->va;
 }
 
+struct page *page_create(enum vm_type type, void *va, bool writable, struct file *file, 
+						off_t offset, size_t read_bytes, size_t zero_bytes) {
+
+	struct page *new_page = malloc(sizeof(struct page));
+	if (new_page == NULL) {
+		return NULL;
+	}				
+
+	new_page->type = type;
+	new_page->va = va;
+	new_page->writable = writable;
+	new_page->is_loaded = false;
+
+	if (type == VM_FILE) {
+		new_page->file = file;
+		new_page->file_page.offset = offset;
+		new_page->file_page.read_bytes = read_bytes;
+		new_page->file_page.zero_bytes = zero_bytes;
+	}
+
+	return new_page;
+}
+
+struct page *page_copy(struct page *original_page) {
+	//페이지 타입 확인
+	enum vm_type type = original_page->type;
+	bool writable = original_page->writable;
+	void *va = original_page->va;
+
+	struct file *file = NULL;
+	off_t offset = 0;
+	size_t read_bytes = 0;
+	size_t zero_bytes = 0;
+	
+	//file_backed일 경우, 파일 관련 정보 복사
+	if (type == VM_FILE) {
+		file = original_page->file;
+		offset = original_page->file_page.offset;
+		read_bytes = original_page->file_page.read_bytes;
+		zero_bytes = original_page->file_page.zero_bytes;
+	}
+
+	struct page *new_page = page_create(type, va, writable, file, offset, read_bytes, zero_bytes);
+
+	//생성된 페이지 반환
+	return new_page;
+}
