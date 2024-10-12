@@ -11,6 +11,7 @@ static bool spt_less_func(const struct hash_elem *a, const struct hash_elem *b, 
 
 #include "userprog/syscall.h" 
 #include "userprog/process.c" 
+#include "vm/page.c"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -142,19 +143,22 @@ vm_evict_frame (void) {
  * and return it. This always return valid address. That is, if the user pool
  * memory is full, this function evicts the frame to get the available memory
  * space.*/
-static struct frame *
-vm_get_frame (void) {
-	struct frame *frame = NULL;
-	// TODO: victim page
-	// frame malloc 으로 할당 후 page, kva 할당
-	frame = malloc(sizeof(struct frame));
-	ASSERT(frame != NULL);
+static struct frame *vm_get_frame(void) {
+    struct frame *frame = malloc(sizeof(struct frame));
+    if (frame == NULL) {
+        return NULL;  // 메모리 할당 실패 시 NULL 반환
+    }
 
-	frame->page = palloc_get_page(PAL_ZERO);
-	frame->kva = ptov(frame->page->va);
-	ASSERT (frame != NULL);
-	ASSERT (frame->page == NULL);
-	return frame;
+    // 물리 메모리 페이지 할당
+    frame->kva = palloc_get_page(PAL_USER | PAL_ZERO);
+    if (frame->kva == NULL) {
+        free(frame);
+        return NULL;
+    }
+
+    // 페이지 프레임 초기화
+    frame->page = NULL;
+    return frame;
 }
 
 /* Growing the stack. */
@@ -169,33 +173,14 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt = &thread_current ()->spt;
-	struct page *page = NULL;
-	
-	// check validation of fault addr 
-	// 완성된 예외처리는 아님, 추가해주거나 빼줘야할수도
-	check_validation_of_fault_addr(addr, spt);
-	
+vm_try_handle_fault (struct page *p) {
+
 	/* TODO: Your code goes here */
 	// 1. page(frame) allocation
 	// 2. data load file(disk) -> memory
 	// 3. page table set up
-	return vm_do_claim_page (page);
+	return vm_claim_page (p->va);
 }
-
-bool
-check_validation_of_fault_addr (void *fault_addr, struct supplemental_page_table *spt) {
-	 // 주소가 사용자 영역에 있는지 확인고 아니면 exit || 주소가 프로세스의 주소 공간 내에 있는지 확인 || 주소가 이미 매핑되어 있지 않은지 확인 || 주소가 유효한 vm_entry에 해당하는지 확인 (SPT에서 검색)
-	user_memory_valid(fault_addr);
-	struct page *find_page = spt_find_page(spt, fault_addr);
-    if (fault_addr == NULL || !is_user_vaddr(fault_addr) || fault_addr >= KERN_BASE || find_page == NULL) {
-		exit(-1);
-        return false;
-    }
-}
-
 
 /* Free the page.
  * DO NOT MODIFY THIS FUNCTION. */
@@ -205,30 +190,48 @@ vm_dealloc_page (struct page *page) {
 	free (page);
 }
 
-/* Claim the page that allocate on VA. */
-bool
-vm_claim_page (void *va UNUSED) {
-	struct page *page = NULL;
-	/* TODO: Fill this function */
+bool vm_claim_page(void *va) {
+    struct thread *t = thread_current();
+    struct page *page = spt_find_page(t->spt, va);  // 주어진 가상 주소에 대한 페이지를 찾음
 
-	return vm_do_claim_page (page);
+    // 페이지가 존재하지 않으면 에러
+    if (page == NULL) {
+        return false;
+    }
+
+    // 페이지를 클레임하고 페이지 테이블을 설정
+    return vm_do_claim_page(page);
 }
 
-/* Claim the PAGE and set up the mmu. */
-static bool
-vm_do_claim_page (struct page *page) {
-	struct frame *frame = vm_get_frame ();
 
-	/* Set links */
-	frame->page = page;
-	page->frame = frame;
+static bool vm_do_claim_page(struct page *page) {
+    // 물리 메모리 프레임을 할당
+    struct frame *frame = vm_get_frame();
+    if (frame == NULL) {
+        return false;  // 프레임 할당 실패 시 false 반환
+    }
 
-	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	if (!install_page(page->va, frame->kva, true)) {
-		return false;
-	}
+    // 프레임과 페이지를 연결
+    frame->page = page;
+    page->frame = frame;
 
-	return swap_in (page, frame->kva);
+    // 페이지 테이블에 페이지를 맵핑
+    if (!install_page(page->va, frame->kva, page->writable)) {
+        // 페이지 테이블 설정 실패 시 물리 메모리 해제
+        vm_dealloc_page(page);
+        return false;
+    }
+
+    // 성공적으로 맵핑되었으면 스왑 혹은 파일에서 데이터를 로드
+    if (page->type == VM_FILE || page->type == VM_ANON) {
+        if (!swap_in(page, frame->kva)) {
+            // 스왑이나 파일 로드 실패 시 메모리 해제
+            vm_dealloc_page(page);
+            return false;
+        }
+    }
+
+    return true;
 }
 
 /* Initialize new supplemental page table */
