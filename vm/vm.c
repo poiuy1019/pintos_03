@@ -12,6 +12,7 @@ static bool spt_less_func(const struct hash_elem *a, const struct hash_elem *b, 
 #include "userprog/syscall.h" 
 #include "userprog/process.c" 
 #include "vm/page.c"
+#include "vm/uninit.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -179,7 +180,7 @@ vm_try_handle_fault (struct page *p) {
 	// 1. page(frame) allocation
 	// 2. data load file(disk) -> memory
 	// 3. page table set up
-	return vm_claim_page (p->va);
+	return vm_do_claim_page (p);
 }
 
 /* Free the page.
@@ -192,7 +193,7 @@ vm_dealloc_page (struct page *page) {
 
 bool vm_claim_page(void *va) {
     struct thread *t = thread_current();
-    struct page *page = spt_find_page(t->spt, va);  // 주어진 가상 주소에 대한 페이지를 찾음
+    struct page *page = spt_find_page(&t->spt, va);  // 주어진 가상 주소에 대한 페이지를 찾음
 
     // 페이지가 존재하지 않으면 에러
     if (page == NULL) {
@@ -224,7 +225,7 @@ static bool vm_do_claim_page(struct page *page) {
 
     // 성공적으로 맵핑되었으면 스왑 혹은 파일에서 데이터를 로드
     if (page->type == VM_FILE || page->type == VM_ANON) {
-        if (!swap_in(page, frame->kva)) {
+        if (!load_file(frame->kva, page)) {
             // 스왑이나 파일 로드 실패 시 메모리 해제
             vm_dealloc_page(page);
             return false;
