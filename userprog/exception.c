@@ -130,6 +130,7 @@ page_fault (struct intr_frame *f) {
 	   data.  It is not necessarily the address of the instruction
 	   that caused the fault (that's f->rip). */
 
+	/* rcr2() read cr2 register that record fault addr */
 	fault_addr = (void *) rcr2();
 
 	/* Turn interrupts back on (they were only off so that we could
@@ -144,8 +145,10 @@ page_fault (struct intr_frame *f) {
 
 #ifdef VM
 	/* For project 3 and later. */
-	if (vm_try_handle_fault (f, fault_addr, user, write, not_present))
-		return;
+	struct page *p = check_address(fault_addr);
+	if (!vm_try_handle_fault (p))
+		exit(-1);
+	return;
 #endif
 
 	/* Count page faults. */
