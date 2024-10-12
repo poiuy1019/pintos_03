@@ -15,6 +15,7 @@
 
 #include "threads/synch.h"
 #include <string.h>
+#include "vm/vm.h"
 
 typedef uint32_t disk_sector_t;
 
@@ -136,7 +137,7 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_READ:							//  9 파일에서 읽기
 			// printf("SYS_READ\n");
 			user_memory_valid((void *)arg2);
-			check_valid_buffer(arg2, arg3, esp, false);
+			check_valid_buffer(arg2, arg3, false);
 			f->R.rax=read(arg1,arg2,arg3);
 			break;
 		case SYS_WRITE:							//  10 파일에 쓰기
@@ -344,13 +345,13 @@ struct vm_entry *check_address (void *addr) {
 	if (addr == NULL || is_kernel_vaddr(addr) || addr >= (void *)0xc0000000)
 		exit(-1);
 	struct thread *t = thread_current ();
-	struct page *find_page = spt_find_page(t->spt, addr);
+	struct page *find_page = spt_find_page(&t->spt, addr);
     if (find_page == NULL)
 		exit(-1);
     return find_page;
 }
 
-void check_valid_buffer(void *buffer, unsigned size, void *esp UNUSED, bool to_write) {
+void check_valid_buffer(void *buffer, unsigned size, bool to_write) {
     void *start_addr = buffer;
     void *end_addr = buffer + size;
     
@@ -369,7 +370,7 @@ void check_valid_buffer(void *buffer, unsigned size, void *esp UNUSED, bool to_w
     }
 }
 
-void check_valid_string(const void *str, void *esp UNUSED) {
+void check_valid_string(const void *str) {
     const char *ptr = (const char *)str;
 
     // str이 NULL일 경우 잘못된 주소로 판단하고 종료
