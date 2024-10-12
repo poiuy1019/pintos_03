@@ -75,7 +75,7 @@ syscall_init (void) {
 
 /* The main system call interface */
 void
-syscall_handler (struct intr_frame *f UNUSED) {
+syscall_handler (struct intr_frame *f) {
 	// TODO: Your implementation goes here.
 	// printf("\n------- syscall handler -------\n");
 	uint64_t arg1 = f->R.rdi;
@@ -84,6 +84,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	uint64_t arg4 = f->R.r10;
 	uint64_t arg5 = f->R.r8;
 	uint64_t arg6 = f->R.r9;
+	void *esp = (void *)f->rsp;   // 스택 포인터
+
+    // 스택 포인터에 대한 유효성 검사
+    check_address(esp); 
 	switch (f->R.rax)
 	{
 		case SYS_HALT:							//  0 운영체제 종료
@@ -132,6 +136,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_READ:							//  9 파일에서 읽기
 			// printf("SYS_READ\n");
 			user_memory_valid((void *)arg2);
+			check_valid_buffer(arg2, arg3, esp, false);
 			f->R.rax=read(arg1,arg2,arg3);
 			break;
 		case SYS_WRITE:							//  10 파일에 쓰기
@@ -332,4 +337,68 @@ struct file *get_file_by_descriptor(int fd)
 		return NULL;
 	struct thread *t = thread_current();
 	return t->fd_table[fd];
+}
+
+// check address validation with vm_entry(page) and return it
+struct vm_entry *check_address (void *addr) {
+	if (addr == NULL || is_kernel_vaddr(addr) || addr >= (void *)0xc0000000)
+		exit(-1);
+	struct thread *t = thread_current ();
+	struct page *find_page = spt_find_page(t->spt, addr);
+    if (find_page == NULL)
+		exit(-1);
+    return find_page;
+}
+
+void check_valid_buffer(void *buffer, unsigned size, void *esp UNUSED, bool to_write) {
+    void *start_addr = buffer;
+    void *end_addr = buffer + size;
+    
+    // buffer부터 buffer + size까지 각 페이지에 대해 검사
+    while (start_addr < end_addr) {
+        // 주소가 유효한지 검사하고, vm_entry 얻기
+        struct page *p = check_address(start_addr);
+        
+        // vm_entry가 쓰기 가능해야 할 경우, writable 멤버를 검사
+        if (to_write && !p->writable) {
+            exit(-1);  // 쓰기 권한이 없으면 프로세스 종료
+        }
+
+        // 다음 페이지로 이동 (Pintos의 페이지 크기는 4KB = 0x1000)
+        start_addr = pg_round_down(start_addr + PGSIZE);  // 다음 페이지의 시작 주소로 이동
+    }
+}
+
+void check_valid_string(const void *str, void *esp UNUSED) {
+    const char *ptr = (const char *)str;
+
+    // str이 NULL일 경우 잘못된 주소로 판단하고 종료
+    if (ptr == NULL) {
+        exit(-1);
+    }
+
+    // 문자열의 각 문자를 검사
+    while (true) {
+        // 현재 문자열 위치에 대해 vm_entry가 존재하는지 확인
+        struct page *p = check_address((void *)ptr);
+
+        // 유효한 vm_entry가 없으면 exit 호출
+        if (p == NULL) {
+            exit(-1);
+        }
+
+        // 문자열의 끝을 만났으면 검사 종료
+        if (*ptr == '\0') {
+            break;
+        }
+
+        // 다음 문자를 검사
+        ptr++;
+
+        // 페이지 경계를 넘어서면 새로운 페이지에 대한 유효성 검사가 필요
+        // 페이지 크기를 넘으면 다음 페이지에 대한 vm_entry를 확인
+        if (pg_ofs(ptr) == 0) {
+            check_address((void *)ptr);  // 다음 페이지의 유효성 검사
+        }
+    }
 }

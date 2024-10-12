@@ -22,5 +22,8 @@ unsigned tell (int fd);
 void close (int fd);
 // page_fault handler 에서 사용하기 위해 추가
 void user_memory_valid(void *r);
+struct vm_entry *check_address (void *addr);
+void check_valid_buffer(void *buffer, unsigned size, void *esp UNUSED, bool to_write);
+void check_valid_string(const void *str, void *esp UNUSED);
 
 #endif /* userprog/syscall.h */

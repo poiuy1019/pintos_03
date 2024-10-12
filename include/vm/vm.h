@@ -144,6 +144,6 @@ void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
 
-bool check_validation_of_fault_addr (void *fault_addr);
+
 
 #endif  /* VM_VM_H */
