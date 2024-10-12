@@ -10,8 +10,6 @@ static uint64_t spt_hash_func(const struct hash_elem *e, void *aux);
 static bool spt_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux);
 
 #include "userprog/syscall.h" 
-#include "userprog/process.c" 
-#include "vm/page.c"
 #include "vm/uninit.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -217,7 +215,7 @@ static bool vm_do_claim_page(struct page *page) {
     page->frame = frame;
 
     // 페이지 테이블에 페이지를 맵핑
-    if (!install_page(page->va, frame->kva, page->writable)) {
+    if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) {
         // 페이지 테이블 설정 실패 시 물리 메모리 해제
         vm_dealloc_page(page);
         return false;
@@ -271,15 +269,15 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 
 /* Free the resource hold by the supplemental page table */
 void
-supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	//process_exit에서 사용
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
 	
-	return hash_destroy(&spt->spt, page_destructor);	
+	hash_destroy(&spt->spt, page_destructor);	
 }
 
-void page_destructor(struct hash_elem *e, void *aux) {
+void page_destructor(struct hash_elem *e, void *aux UNUSED) {
 	struct page *page = hash_entry(e, struct page, elem);
 	vm_dealloc_page(page);
 }

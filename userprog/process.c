@@ -764,7 +764,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		page->writable = writable;	//쓰기 가능 여부
 		page->va = upage;		//가상 주소 설정
 
-		bool result = insert_vme(&thread_current()->spt, page);
+		bool result = spt_insert_page(&thread_current()->spt, page);
 		if (!result) {
 			free(page);		//page 삽입 실패 시 메모리 해제
 			return false;

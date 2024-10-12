@@ -30,6 +30,7 @@ enum vm_type {
 #include "vm/uninit.h"
 #include "vm/anon.h"
 #include "vm/file.h"
+#include "vm/page.h"
 #ifdef EFILESYS
 #include "filesys/page_cache.h"
 #endif
