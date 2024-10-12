@@ -101,18 +101,14 @@ spt_insert_page (struct supplemental_page_table *spt ,
 		succ = true;
 	}
 
-	page->is_loaded = false;	//왜 false인지 모름
-	page->swap_slot = -1;
-	// page->file.offset = 0;
-	// page->file.read_bytes = 0;
-	// page->file.zero_bytes = 0;
-
 	return succ;
 }
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	hash_delete(&spt->spt, &page->elem);
 	vm_dealloc_page (page);
+
 	return true;
 }
 
@@ -214,13 +210,26 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 		struct supplemental_page_table *src UNUSED) {
+	//do_fork에서 사용
+
+
+
+	
 }
 
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+	//process_exit에서 사용
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	
+	return hash_destroy(&spt->spt, page_destructor);	
+}
+
+void page_destructor(struct hash_elem *e, void *aux) {
+	struct page *page = hash_entry(e, struct page, elem);
+	vm_dealloc_page(page);
 }
 
 /*Hash function for the supplemental page table(SPT)*/

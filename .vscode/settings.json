@@ -29,6 +29,7 @@
         "io.h": "c",
         "vm.h": "c",
         "malloc.h": "c",
-        "inode.h": "c"
+        "inode.h": "c",
+        "list.h": "c"
     }
 }

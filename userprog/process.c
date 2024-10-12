@@ -21,7 +21,7 @@
 
 #include "threads/synch.h"
 #include "userprog/syscall.h"
-
+#include "vm/vm.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -301,6 +301,7 @@ process_exit (void) {
 	palloc_free_multiple(curr->fd_table, FD_PAGES);
 
 	//VM Add vm_entry delete function
+	supplemental_page_table_kill(&curr->spt);
 	
 
 	file_close(curr->running); //minjae's
@@ -651,29 +652,31 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-		/* Get a page of memory. */
-		uint8_t *kpage = palloc_get_page (PAL_USER);
-		if (kpage == NULL)
-			return false;
-
-		/* Load this page. */
-		if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes) {
-			palloc_free_page (kpage);
+		struct page *page = malloc(sizeof(struct page));	//page구조체는 페이지의 메타 데이터를 담고있는 구조체이므로, palloc이 아닌 malloc 사용. palloc을 쓰면 4KB 페이지 단위로 할당하기 때문.
+		if (page == NULL) {
 			return false;
 		}
-		memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-		/* Add the page to the process's address space. */
-		if (!install_page (upage, kpage, writable)) {
-			printf("fail\n");
-			palloc_free_page (kpage);
+		//page 정보 설정
+		page->file = file;		//파일의 포인터 설정
+		page->file_page.offset = ofs;
+		page->file_page.read_bytes = page_read_bytes;
+		page->file_page.zero_bytes = page_zero_bytes;	
+		page->writable = writable;	//쓰기 가능 여부
+		page->va = upage;		//가상 주소 설정
+
+		bool result = insert_vme(&thread_current()->spt, page);
+		if (!result) {
+			free(page);		//page 삽입 실패 시 메모리 해제
 			return false;
 		}
+
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		ofs += page_read_bytes; //없으면 항상 동일한 파일 위치에서 데이터를 읽어오게 됌
 	}
 	return true;
 }

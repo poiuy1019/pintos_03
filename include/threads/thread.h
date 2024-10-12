@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "vm/vm.h"
 
 #ifdef VM
 #include "vm/vm.h"
@@ -131,9 +132,10 @@ struct thread {
 	
 	struct file *running;		// minjae's
 // #endif
+	struct supplemental_page_table spt;
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
-	struct supplemental_page_table spt;
+	// struct supplemental_page_table spt;
 #endif
 
 	/* Owned by thread.c. */
