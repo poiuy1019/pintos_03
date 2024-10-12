@@ -161,7 +161,6 @@ syscall_handler (struct intr_frame *f) {
 			// printf("default;\n");
 			break;
 	}
-	// printf("-------------------------------\n\n");
 }
 
 void halt (void){

@@ -10,8 +10,6 @@ static uint64_t spt_hash_func(const struct hash_elem *e, void *aux);
 static bool spt_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux);
 
 #include "userprog/syscall.h" 
-#include "userprog/process.c" 
-#include "vm/page.c"
 #include "vm/uninit.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -76,22 +74,22 @@ spt_find_page (struct supplemental_page_table *spt, void *va) {
 	struct page *page = NULL;
 	/* TODO: Fill this function. */
 	
-	struct page page_temp;
-
-	struct hash_elem *elem = hash_find(&spt->spt, &page_temp.elem);
-
-	if (elem == NULL) {
+	struct page want_page;
+	want_page.va = va;
+	struct hash_elem *found_elem = hash_find(&spt->spt, &want_page.elem);
+	if (found_elem == NULL) {
 		return NULL;
 	}
 
-	struct page *found_page = hash_entry(elem, struct page, elem);
-	return found_page;
+	page = hash_entry(found_elem, struct page, elem);
+	
+	return page;
 }
 
 /* Insert PAGE into spt with validation. */
 bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED,
-		struct page *page UNUSED) {
+spt_insert_page (struct supplemental_page_table *spt ,
+		struct page *page) {
 	int succ = false;
 	/* TODO: Fill this function. */
 
@@ -106,18 +104,14 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		succ = true;
 	}
 
-	page->is_loaded = false;
-	page->swap_slot = -1;
-	page->file.offset = 0;
-	page->file.read_bytes = 0;
-	page->file.zero_bytes = 0;
-
 	return succ;
 }
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	hash_delete(&spt->spt, &page->elem);
 	vm_dealloc_page (page);
+
 	return true;
 }
 
@@ -217,7 +211,7 @@ static bool vm_do_claim_page(struct page *page) {
     page->frame = frame;
 
     // 페이지 테이블에 페이지를 맵핑
-    if (!install_page(page->va, frame->kva, page->writable)) {
+    if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) {
         // 페이지 테이블 설정 실패 시 물리 메모리 해제
         vm_dealloc_page(page);
         return false;
@@ -241,20 +235,32 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 	ASSERT(spt != NULL);
 
 	return hash_init(&spt->spt, spt_hash_func, spt_less_func, NULL);
-	
 }
 
 /* Copy supplemental page table from src to dst */
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 		struct supplemental_page_table *src UNUSED) {
+	//do_fork에서 사용
+
+
+
+	
 }
 
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+	//process_exit에서 사용
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	
+	return hash_destroy(&spt->spt, page_destructor);	
+}
+
+void page_destructor(struct hash_elem *e, void *aux) {
+	struct page *page = hash_entry(e, struct page, elem);
+	vm_dealloc_page(page);
 }
 
 /*Hash function for the supplemental page table(SPT)*/
@@ -274,3 +280,4 @@ spt_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux) {
 	const struct page *page_b = hash_entry(b, struct page, elem);
 	return page_a->va < page_b->va;
 }
+

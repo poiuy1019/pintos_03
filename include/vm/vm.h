@@ -30,6 +30,7 @@ enum vm_type {
 #include "vm/uninit.h"
 #include "vm/anon.h"
 #include "vm/file.h"
+#include "vm/page.h"
 #ifdef EFILESYS
 #include "filesys/page_cache.h"
 #endif
@@ -50,11 +51,12 @@ struct page {
 
 	/* Your implementation */
 	bool writable;
+	// struct file *file;
 	enum vm_type type;
 	size_t swap_slot;	//스왑 할 때 필요
-	struct hash_elem elem;
+	struct file *file;	//파일 자체에 대한 포인터 추가
+	struct hash_elem elem;	//hash_table elem
 	bool is_loaded; //물리 메모리의 탑재 여부, 아직 역할 모름.
-
 	struct list_elem mmap_elem;
 	
 	/* Per-type data are binded into the union.
@@ -62,7 +64,7 @@ struct page {
 	union {		//스왑할 때 필요
 		struct uninit_page uninit;
 		struct anon_page anon;
-		struct file_page file;	//file backed page
+		struct file_page file_page;	//file backed page. page 구조체의 file 포인터와 구분하기 위해 file_page로 변경
 #ifdef EFILESYS
 		struct page_cache page_cache;
 #endif
@@ -142,7 +144,8 @@ bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,
 void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
-
+static bool page_init(struct page *page);
+void page_destructor(struct hash_elem *e, void *aux);
 
 
 #endif  /* VM_VM_H */
