@@ -49,27 +49,61 @@ static struct frame *vm_get_victim (void);
 static bool vm_do_claim_page (struct page *page);
 static struct frame *vm_evict_frame (void);
 
-/* Create the pending page object with initializer. If you want to create a
- * page, do not create it directly and make it through this function or
- * `vm_alloc_page`. */
-bool
-vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
-		vm_initializer *init, void *aux) {
+// /* Create the pending page object with initializer. If you want to create a
+//  * page, do not create it directly and make it through this function or
+//  * `vm_alloc_page`. */
+// bool
+// vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
+// 		vm_initializer *init, void *aux) {
 
-	ASSERT (VM_TYPE(type) != VM_UNINIT)
+// 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 
-	struct supplemental_page_table *spt = &thread_current ()->spt;
+// 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
-	/* Check wheter the upage is already occupied or not. */
-	if (spt_find_page (spt, upage) == NULL) {
-		/* TODO: Create the page, fetch the initialier according to the VM type,
-		 * TODO: and then create "uninit" page struct by calling uninit_new. You
-		 * TODO: should modify the field after calling the uninit_new. */
+// 	/* Check wheter the upage is already occupied or not. */
+// 	if (spt_find_page (spt, upage) == NULL) {
+// 		/* TODO: Create the page, fetch the initialier according to the VM type,
+// 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
+// 		 * TODO: should modify the field after calling the uninit_new. */
 
-		/* TODO: Insert the page into the spt. */
-	}
-err:
-	return false;
+// 		/* TODO: Insert the page into the spt. */
+// 	}
+// err:
+// 	return false;
+// }
+
+bool vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
+        vm_initializer *init, void *aux) {
+
+    ASSERT (VM_TYPE(type) != VM_UNINIT); //original code
+
+    struct supplemental_page_table *spt = &thread_current ()->spt; //original code
+
+    /* Check whether the upage is already occupied or not. */
+    if (spt_find_page (spt, upage) == NULL) {  //original code
+        struct page *page = malloc(sizeof(struct page)); 
+        if (!page) goto err; //습관적 예외처리
+
+        bool (*page_initializer)(struct page *, enum vm_type, void *) = NULL; //page_initializer 선언
+
+        //page_initializer 를 type에 맞는 initializer로 설정
+        if (VM_TYPE(type) == VM_ANON) {
+            page_initializer = anon_initializer; 
+        } else if (VM_TYPE(type) == VM_FILE) {
+            page_initializer = file_backed_initializer; //아직 미지의 영역
+        } else {
+            goto err; // type이 anon도 file도 아닌 경우
+        }
+
+        uninit_new(page, upage, init, type, aux, page_initializer); //lazy loading 하는 사람이 잘 이해할듯
+
+        page->writable = writable; // ??? read & write write default값으로 설정해주는 게 맞다.
+
+        return spt_insert_page(spt, page); //생성된 page를 spt에 insert
+    }
+
+err: //original code
+    return false; //original code
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
@@ -273,8 +307,9 @@ supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	//process_exit에서 사용
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
-	
-	hash_destroy(&spt->spt, page_destructor);	
+	if (!hash_empty(&spt->spt)) {
+		hash_destroy(&spt->spt, page_destructor);
+	}
 }
 
 void page_destructor(struct hash_elem *e, void *aux UNUSED) {

@@ -743,7 +743,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (ofs % PGSIZE == 0);
 
-	file_seek (file, ofs);
 	while (read_bytes > 0 || zero_bytes > 0) {
 		/* Do calculate how to fill this page.
 		 * We will read PAGE_READ_BYTES bytes from FILE
@@ -751,46 +750,86 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-		struct page *page = malloc(sizeof(struct page));	//page구조체는 페이지의 메타 데이터를 담고있는 구조체이므로, palloc이 아닌 malloc 사용. palloc을 쓰면 4KB 페이지 단위로 할당하기 때문.
-		if (page == NULL) {
-			return false;
+		/* TODO: Set up aux to pass information to the lazy_load_segment. */
+		void *aux = NULL;
+		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
+					writable, lazy_load_segment, aux)) {
+				return false;
 		}
+			
 
-		//page 정보 설정
-		page->file = file;		//파일의 포인터 설정
-		page->file_page.offset = ofs;
-		page->file_page.read_bytes = page_read_bytes;
-		page->file_page.zero_bytes = page_zero_bytes;	
-		page->writable = writable;	//쓰기 가능 여부
-		page->va = upage;		//가상 주소 설정
+		// `page_create`를 사용하여 페이지 생성 및 초기화
+		struct page *page = page_create(VM_FILE, upage, writable, file, ofs, page_read_bytes, page_zero_bytes);
+		if (page == NULL) {
+			return false;  // 페이지 생성 실패 시 false 반환
+		}
 
 		bool result = spt_insert_page(&thread_current()->spt, page);
 		if (!result) {
-			free(page);		//page 삽입 실패 시 메모리 해제
+			free(page);		// 페이지 삽입 실패 시 메모리 해제
 			return false;
 		}
-
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
 		ofs += page_read_bytes; //없으면 항상 동일한 파일 위치에서 데이터를 읽어오게 됌
+
 	}
 	return true;
 }
 
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
+// static bool
+// setup_stack (struct intr_frame *if_) {
+// 	bool success = false;
+// 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
+
+// 	/* TODO: Map the stack on stack_bottom and claim the page immediately.
+// 	 * TODO: If success, set the rsp accordingly.
+// 	 * TODO: You should mark the page is stack. */
+// 	/* TODO: Your code goes here */
+
+// 	return success;
+// }
+
 static bool
 setup_stack (struct intr_frame *if_) {
 	bool success = false;
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
-	/* TODO: Map the stack on stack_bottom and claim the page immediately.
-	 * TODO: If success, set the rsp accordingly.
-	 * TODO: You should mark the page is stack. */
-	/* TODO: Your code goes here */
+	/* 1. page 생성 및 초기화 */
+	struct page *p = malloc(sizeof(struct page));
+	if (p == NULL) {
+		return success;  // 메모리 할당 실패 시 false 반환
+	}
 
+	p->type = VM_ANON;  // 익명 페이지
+	p->va = stack_bottom;
+	p->writable = true;  // 스택 페이지는 쓰기 가능해야 함
+	p->is_loaded = false;  // 물리 메모리에 아직 탑재되지 않았음을 표시
+	p->anon = (struct anon_page) {};  // anon 페이지로 초기화
+	p->file = NULL;  // 스택은 파일을 사용하지 않음
+
+	/* 2. spt_insert_page()로 해시테이블에 추가 */
+	if (!spt_insert_page(&thread_current()->spt, p)) {
+		free(p);  // 삽입 실패 시 메모리 해제
+		return success;
+	}
+
+	/* 3. 페이지 클레임 */
+    if (!vm_claim_page(stack_bottom)) {
+        free(p);  // 클레임 실패 시 페이지 해제
+        return success;
+    }
+
+	/* 4. rsp 설정 */
+	if_->rsp = USER_STACK;
+	p->is_loaded = true;  // 페이지가 성공적으로 로드되었음을 표시
+	success = true;
 	return success;
 }
+
+
 #endif /* VM */
