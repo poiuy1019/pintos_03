@@ -10,6 +10,7 @@
 
 #include "vm/vm.h"
 #include "vm/uninit.h"
+#include "vm/anon.h" //anon_destroy 사용위해 추가
 
 static bool uninit_initialize (struct page *page, void *kva);
 static void uninit_destroy (struct page *page);
@@ -38,7 +39,7 @@ uninit_new (struct page *page, void *va, vm_initializer *init,
 			.type = type,
 			.aux = aux,
 			.page_initializer = initializer,
-		}
+		}				////////////////////////////박진우 바보냐? ㅇㅇ 바보다
 	};
 }
 
@@ -65,4 +66,17 @@ uninit_destroy (struct page *page) {
 	struct uninit_page *uninit UNUSED = &page->uninit;
 	/* TODO: Fill this function.
 	 * TODO: If you don't have anything to do, just return. */
+// 	struct supplemental_page_table *spt = &thread_current ()->spt;
+// 	enum vm_type type=page->type;
+// 	if (VM_TYPE(type) == VM_ANON) {
+// 		anon_destroy(page); 
+// 	} else if (VM_TYPE(type) == VM_FILE) {
+// 		file_backed_destroy(page); //아직 미지의 영역
+// 	} else {
+// 		goto err; // type이 anon도 file도 아닌 경우
+// 	}
+// 	return spt_remove_page(spt, page); //생성된 page를 spt에 insert
+
+// err:
+//     return false;
 }
