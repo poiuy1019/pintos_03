@@ -48,14 +48,14 @@ anon_swap_out (struct page *page) {
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
 static void
 anon_destroy (struct page *page) {
-	struct anon_page *anon_page = &page->anon;
+	// struct anon_page *anon_page = &page->anon;
 
-    if (page->frame != NULL) { 
-        lock_acquire(&frame_table_lock);
-        list_remove(&page->frame->frame_elem);
-		lock_release(&frame_table_lock);
-		frame_free(page->frame);
-    }
+    // if (page->frame != NULL) { 
+    //     lock_acquire(&frame_table_lock);
+    //     list_remove(&page->frame->frame_elem);
+	// 	lock_release(&frame_table_lock);
+	// 	frame_free(page->frame);
+    // }
 }
 
 void frame_free(struct frame *frame) { //고민해봐야하긴함

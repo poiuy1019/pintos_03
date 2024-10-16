@@ -132,12 +132,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			break;
 		case SYS_READ:							//  9 파일에서 읽기
 			// printf("SYS_READ\n");
-			check_address((void *)arg2);
-			f->R.rax=read(arg1,arg2,arg3);
+			check_valid_buffer(f->R.rsi, f->R.rdx, f->rsp, 1);
+			// check_address((void *)arg2);
+			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_WRITE:							//  10 파일에 쓰기
 			// printf("SYS_WRITE\n");
-			check_address((void *)arg2);
+			check_valid_buffer(f->R.rsi, f->R.rdx, f->rsp, 0);
 			f->R.rax=write((int)arg1,(void *)arg2,(unsigned)arg3);
 			break;
 		case SYS_SEEK:							//  11 파일 내 위치 변경
@@ -244,7 +245,6 @@ int read (int fd, void *buffer, unsigned size){
 		}
 		return i;
 	}
-	
     struct file *file = get_file_by_descriptor(fd);
 	if (file == NULL || fd == STD_OUT || fd == STD_ERR)  // 빈 파일, stdout, stderr를 읽으려고 할 경우
 		return -1;
@@ -256,6 +256,7 @@ int read (int fd, void *buffer, unsigned size){
 
 	return bytes;
 }
+
 
 int write (int fd, const void *buffer, unsigned size){
 	if (fd == STD_IN || fd == STD_ERR){
@@ -323,47 +324,22 @@ bool user_memory_valid(void *r) {
     return r != NULL && is_user_vaddr(r);
 }
 
-bool user_string_valid(const char *str) {
-    struct thread *current = thread_current();
-    uint64_t *pml4 = current->pml4;
 
-    if (str == NULL || !is_user_vaddr(str)) {
-        return false;
-    }
-
-    while (true) {
-        if (pml4_get_page(pml4, (void *)str) == NULL) {
-            return false;
-        }
-        char c = *str;
-        if (c == '\0') {
-            break;
-        }
-        str++;
-    }
-
-    return true;
-}
-
-void check_address(const void *addr) {
-    if (addr == NULL || !is_user_vaddr(addr)) {
+struct page * check_address(void *addr) {
+    if (is_kernel_vaddr(addr))
+    {
         exit(-1);
     }
+    return spt_find_page(&thread_current()->spt, addr);
 }
 
-void check_valid_buffer(void *buffer, unsigned size, bool to_write) {
-    char *buf = (char *)buffer;
-    char *end = buf + size;
-    while (buf < end) {
-        check_address(buf);
-
-        if (to_write) {
-            // Additional checks for write permissions can be added here.
-        }
-
-        // Move to the next page
-        buf = (char *)pg_round_down(buf);
-        buf += PGSIZE;
+void check_valid_buffer(void* buffer, unsigned size, void* rsp, bool to_write) {
+    for (int i = 0; i < size; i++) {
+        struct page* page = check_address(buffer + i);    // 인자로 받은 buffer부터 buffer + size까지의 크기가 한 페이지의 크기를 넘을수도 있음
+        if(page == NULL)
+            exit(-1);
+        if(to_write == true && page->writable == false)
+            exit(-1);
     }
 }
 

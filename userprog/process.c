@@ -747,7 +747,7 @@ lazy_load_segment (struct page *page, void *aux) {
     //     return false;
     // }
     // memset(page->frame->kva + read_bytes, 0, zero_bytes);
-    free(info);
+    // free(info);
     return true;
 	/* NOTE: The end where custom code is added */
 

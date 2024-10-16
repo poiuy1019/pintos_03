@@ -20,7 +20,9 @@ spt_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux) {
 
 void page_destructor(struct hash_elem *e, void *aux UNUSED) {
 	struct page *page = hash_entry(e, struct page, hash_elem);
-	vm_dealloc_page(page);
+	destroy(page);
+    free(page);
+	// vm_dealloc_page(page);
 }
 /* NOTE: The end where custom code is added */
 
@@ -85,7 +87,11 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		struct page *new_page = (struct page *) malloc(sizeof(struct page));
 		if (new_page == NULL)
             return false;
-		bool (*page_initializer)(struct page *, enum vm_type, void *) = NULL;
+
+		// bool (*page_initializer)(struct page *, enum vm_type, void *) = NULL;
+		typedef bool (*InitializerFunc)(struct page *, enum vm_type, void *);
+		InitializerFunc page_initializer = NULL;
+
 		switch (VM_TYPE(type)) {
 			case VM_ANON:
 				page_initializer = anon_initializer;
@@ -254,22 +260,23 @@ vm_claim_page(void *va) {
     /* 3. Check if the page is already present in the supplemental page table */
     struct page *page = spt_find_page(spt, page_va);
     if (page == NULL) {
-        /* 4. Allocate and initialize a new page structure */
-        page = malloc(sizeof(struct page));
-        if (page == NULL) {
-            return false; /* 메모리 할당 실패 */
-        }
+        // /* 4. Allocate and initialize a new page structure */
+        // page = malloc(sizeof(struct page));
+        // if (page == NULL) {
+        //     return false; /* 메모리 할당 실패 */
+        // }
 
-        page->va = page_va;
-        page->writable = true; /* 필요에 따라 설정 */
-        page->frame = NULL; /* 초기에는 프레임이 없음 */
-        page->is_loaded = false; /* 페이지가 아직 로드되지 않음 */
+        // page->va = page_va;
+        // page->writable = true; /* 필요에 따라 설정 */
+        // page->frame = NULL; /* 초기에는 프레임이 없음 */
+        // page->is_loaded = false; /* 페이지가 아직 로드되지 않음 */
 
-        /* 5. 페이지를 보조 페이지 테이블에 삽입 */
-        if (!spt_insert_page(spt, page)) {
-            free(page);
-            return false; /* 삽입 실패 */
-        }
+        // /* 5. 페이지를 보조 페이지 테이블에 삽입 */
+        // if (!spt_insert_page(spt, page)) {
+        //     free(page);
+        //     return false; /* 삽입 실패 */
+        // }
+		return false;
     }
 
     /* 6. 페이지가 이미 로드되어 있는지 확인 */
@@ -332,56 +339,26 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 	while (hash_next(&i)) {	
 		struct page *src_page = hash_entry(hash_cur(&i), struct page, hash_elem); // 현재 페이지 가져오기
 		enum vm_type type = VM_TYPE(src_page->operations->type); // 페이지 타입 확인 (anon, file 등)
+		void *upage = src_page->va;
+		bool writable = src_page->writable;
 
-		/* 새로운 페이지를 할당하여 자식 프로세스에 추가합니다 */
-		struct page *new_page = malloc(sizeof(struct page)); // 새 페이지를 위한 메모리 할당
-		if (new_page == NULL) {
+		if (type == VM_UNINIT) {
+			vm_initializer *init = src_page->uninit.init;
+			void *aux = src_page->uninit.aux;
+			vm_alloc_page_with_initializer(VM_ANON, upage, writable, init, aux);
+			continue;
+		}
+
+		if (!vm_alloc_page(type, upage, writable)) {
 			return false;
 		}
 
-		/* 페이지 속성 복사 */
-		new_page->va = src_page->va;
-		new_page->writable = src_page->writable;
-		new_page->is_loaded = src_page->is_loaded;
-		new_page->operations = src_page->operations;
-
-		/* 페이지 타입에 따라 적절히 초기화 및 클레임 */
-		switch (type) {
-			case VM_ANON:
-				// anon 페이지 복사
-				if (!anon_initializer(new_page, src_page->operations->type, NULL)) {
-					free(new_page);
-					return false;
-				}
-				break;
-			case VM_FILE:
-				// file-backed 페이지 복사
-				if (!file_backed_initializer(new_page, src_page->operations->type, NULL)) {
-					free(new_page);
-					return false;
-				}
-				break;
-			default:
-				// 알 수 없는 타입의 경우 에러 처리
-				free(new_page);
-				return false;
-		}
-
-		/* 새로운 페이지를 destination의 supplemental page table에 추가 */
-		if (!spt_insert_page(dst, new_page)) {
-			free(new_page);
+		if (!vm_claim_page(upage)) {
 			return false;
 		}
 
-		/* 물리 메모리 할당 (frame 할당) */
-		if (src_page->is_loaded) {
-			if (!vm_do_claim_page(new_page)) {
-				free(new_page);
-				return false;
-			}
-			/* Frame의 내용 복사 (메모리 복사) */
-			memcpy(new_page->frame->kva, src_page->frame->kva, PGSIZE);
-		}
+		struct page *dst_page = spt_find_page(dst, upage);
+		memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
 	}
 	return true;
 }
@@ -394,6 +371,7 @@ supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* NOTE: The beginning where custom code is added */
 	// lock_acquire(&spt_kill_lock);
 	// hash_destroy(&spt->pages, page_destructor);
+	hash_clear (&spt->pages, page_destructor);
 	// lock_release(&spt_kill_lock);
 	/* NOTE: The end where custom code is added */
 }
