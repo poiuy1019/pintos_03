@@ -208,7 +208,10 @@ vm_get_frame (void) {
 
 /* Growing the stack. */
 static void
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr) {
+	if (vm_alloc_page(VM_ANON, pg_round_down(addr), true)) {
+		vm_claim_page(pg_round_down(addr));
+	}
 }
 
 /* Handle the fault on write_protected page */
@@ -219,21 +222,27 @@ vm_handle_wp (struct page *page UNUSED) {
 /* Return true on success */
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+		bool user UNUSED, bool write, bool not_present UNUSED) {
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 	// struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	/* NOTE: The beginning where custom code is added */
-	void *fault_addr = pg_round_down(addr);
-	if (fault_addr == NULL || !is_user_vaddr(fault_addr)) {
+	// void *fault_addr = pg_round_down(addr);
+	if (addr == NULL || !is_user_vaddr(addr)) {
         return false;
     }
-	struct page *page = spt_find_page(spt, fault_addr);
 
+	if (addr <= USER_STACK && addr >= USER_STACK - (1 << 20) && addr >= f->rsp - 8) {
+			vm_stack_growth(addr);
+	}
+	struct page *page = spt_find_page(spt, addr);
 	if (page == NULL)
         return false;
     
+	if (write && !page->writable) {
+    	return false;
+	}
 	/* NOTE: The end where custom code is added */
 	return vm_do_claim_page (page);
 }
