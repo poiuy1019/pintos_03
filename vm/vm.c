@@ -231,6 +231,7 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
     }
 
 	if(not_present) {
+		//rsp - 8
 		if (addr <= USER_STACK && addr >= USER_STACK - (1 << 20) && addr >= f->rsp - 8) {
 			vm_stack_growth(addr);
 		}
@@ -252,7 +253,7 @@ vm_dealloc_page (struct page *page) {
 	destroy (page);
 	free (page);
 }
-
+/*good*/
 /* Claim the page that allocate on VA. */
 bool
 vm_claim_page(void *va) {
