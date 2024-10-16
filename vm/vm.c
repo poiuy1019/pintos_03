@@ -18,7 +18,7 @@ spt_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux) {
 	return (page_a->va) < (page_b->va);
 }
 
-void page_destructor(struct hash_elem *e, void *aux UNUSED) {
+void page_destructor(struct hash_elem *e) {
 	struct page *page = hash_entry(e, struct page, hash_elem);
 	vm_dealloc_page(page);
 }
@@ -187,16 +187,16 @@ vm_get_frame (void) {
 	/* NOTE: The beginning where custom code is added */
 	struct frame *frame = malloc(sizeof(struct frame));
 	frame->kva = palloc_get_page(PAL_USER);
-	frame->page = NULL;
 
 	if (frame->kva == NULL)
 		// PANIC("todo");
 		return NULL;
 
-	lock_acquire(&frame_table_lock);
+	lock_acquire(&frame_table_lock);	
     list_push_back(&frame_table, &frame->frame_elem);
 	lock_release(&frame_table_lock);
 	/* NOTE: The end where custom code is added */
+	frame->page = NULL;
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
 	return frame;
@@ -205,6 +205,11 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr UNUSED) {
+	
+	//보조 페이지 할당 필요
+	if (vm_alloc_page(VM_ANON, pg_round_down(addr), true)) {
+		vm_claim_page(pg_round_down(addr));
+	}
 }
 
 /* Handle the fault on write_protected page */
@@ -215,23 +220,29 @@ vm_handle_wp (struct page *page UNUSED) {
 /* Return true on success */
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+		bool user UNUSED, bool write UNUSED, bool not_present ) {
 	struct supplemental_page_table *spt = &thread_current ()->spt;
-	// struct page *page = NULL;
+	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	/* NOTE: The beginning where custom code is added */
-	void *fault_addr = pg_round_down(addr);
-	if (fault_addr == NULL || !is_user_vaddr(fault_addr)) {
+	if (addr == NULL || !is_user_vaddr(addr)) {
         return false;
     }
-	struct page *page = spt_find_page(spt, fault_addr);
 
-	if (page == NULL)
-        return false;
-    
+	if(not_present) {
+		if (addr <= USER_STACK && addr >= USER_STACK - (1 << 20) && addr >= f->rsp - 8) {
+			vm_stack_growth(addr);
+		}
+		page = spt_find_page(spt, addr);
+		if (page == NULL){
+			return false;
+		}
+		return vm_do_claim_page(page);
+	}
+
 	/* NOTE: The end where custom code is added */
-	return vm_do_claim_page (page);
+	return false;
 }
 
 /* Free the page.
@@ -256,22 +267,7 @@ vm_claim_page(void *va) {
     /* 3. Check if the page is already present in the supplemental page table */
     struct page *page = spt_find_page(spt, page_va);
     if (page == NULL) {
-        /* 4. Allocate and initialize a new page structure */
-        page = malloc(sizeof(struct page));
-        if (page == NULL) {
-            return false; /* 메모리 할당 실패 */
-        }
-
-        page->va = page_va;
-        page->writable = true; /* 필요에 따라 설정 */
-        page->frame = NULL; /* 초기에는 프레임이 없음 */
-        page->is_loaded = false; /* 페이지가 아직 로드되지 않음 */
-
-        /* 5. 페이지를 보조 페이지 테이블에 삽입 */
-        if (!spt_insert_page(spt, page)) {
-            free(page);
-            return false; /* 삽입 실패 */
-        }
+        return false;
     }
 
     /* 6. 페이지가 이미 로드되어 있는지 확인 */
@@ -291,9 +287,6 @@ vm_claim_page(void *va) {
     return true;
 }
 
-
-
-
 /* Claim the PAGE and set up the mmu. */
 static bool
 vm_do_claim_page (struct page *page) {
@@ -312,6 +305,7 @@ vm_do_claim_page (struct page *page) {
 	/* NOTE: The end where custom code is added */
 	return swap_in (page, frame->kva);
 }
+
 
 /* Initialize new supplemental page table */
 void
@@ -365,3 +359,4 @@ supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	// lock_release(&spt_kill_lock);
 	/* NOTE: The end where custom code is added */
 }
+

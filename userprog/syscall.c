@@ -318,7 +318,6 @@ void close (int fd){	//(oom_update)
 	file_close(f);
 }
 
-
 bool user_memory_valid(void *r) {
     return r != NULL && is_user_vaddr(r);
 }

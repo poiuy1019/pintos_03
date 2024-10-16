@@ -301,6 +301,7 @@ process_exit (void) {
 	palloc_free_multiple(curr->fd_table, FD_PAGES);
 	file_close(curr->running); //minjae's
 	process_cleanup();
+	//bucket free해주기 만약 kill에서 clean을 썼다면.
 
 	sema_up(&curr->wait_sema); // 끝나고 기다리는 부모한테 세마포 넘겨줌
 	sema_down(&curr->free_sema); // 부모가 자식 free하고 세마포 넘길 때까지 기다림
@@ -735,7 +736,6 @@ lazy_load_segment (struct page *page, void *aux) {
     if (file_read(file, kva, page_read_bytes) != (int)page_read_bytes) {
         /* Handle read error */
         palloc_free_page(kva);
-        free(info);
         return false;
     }
 
@@ -747,7 +747,6 @@ lazy_load_segment (struct page *page, void *aux) {
     //     return false;
     // }
     // memset(page->frame->kva + read_bytes, 0, zero_bytes);
-    free(info);
     return true;
 	/* NOTE: The end where custom code is added */
 
@@ -796,7 +795,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 		// void *aux = NULL;
 		if (!vm_alloc_page_with_initializer(VM_ANON, upage, writable, lazy_load_segment, info)) {
-            free(info);
             return false;
         }
 		/* NOTE: The end where custom code is added */
@@ -832,7 +830,6 @@ setup_stack (struct intr_frame *if_) {
     }
 	if_->rsp = USER_STACK;
 	return true;
-	thread_current()->stack_bottom = stack_bottom;	//stack_growth에 쓰임
 	/* NOTE: The end where custom code is added */
 }
 #endif /* VM */
