@@ -16,6 +16,9 @@
 #include "threads/synch.h"
 #include <string.h>
 
+#include "vm/file.h"
+
+
 typedef uint32_t disk_sector_t;
 
 struct file {
@@ -45,6 +48,8 @@ void syscall_handler (struct intr_frame *);
 bool user_memory_valid(void *r);
 struct file *get_file_by_descriptor(int fd);
 struct lock syscall_lock;
+void *mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+void munmap (void *addr);
 
 /* System call.
  *
@@ -78,7 +83,6 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	// printf("\n------- syscall handler -------\n");
 	uint64_t arg1 = f->R.rdi;
 	uint64_t arg2 = f->R.rsi;
 	uint64_t arg3 = f->R.rdx;
@@ -88,76 +92,62 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	switch (f->R.rax)
 	{
 		case SYS_HALT:							//  0 운영체제 종료
-			// RPL(Requested Privilege Level) : cs의 하위 2비트
 			if ((f->cs & 0x3) != 0){}
-				// 권한 없음
-			// printf("SYS_HALT\n");
 			halt();
 		case SYS_EXIT:							//  1 프로세스 종료
-			// printf("SYS_EXIT\n");
 			exit(arg1);
 			break;
 		case SYS_FORK:							//  2 프로세스 복제
-			// printf("SYS_FORK\n");
-			// f->R.rax=fork(arg1);
 			f->R.rax = fork(arg1, f);		//(oom_update)
 			break;
 		case SYS_EXEC:							//  3 새로운 프로그램 실행
-			// printf("SYS_EXEC\n");
 			check_valid_string((const char *)arg1);
 			f->R.rax=exec(arg1);
 			break;
 		case SYS_WAIT:							//  4 자식 프로세스 대기
-			// printf("SYS_WAIT\n");
 			f->R.rax=wait(arg1);
 			break;
 		case SYS_CREATE:						//  5 파일 생성
-			// printf("SYS_CREATE\n");
 			check_valid_string((const char *)arg1);
 			f->R.rax=create(arg1,arg2);
 			break;
 		case SYS_REMOVE:						//  6 파일 삭제
-			// printf("SYS_REMOVE\n");
 			check_valid_string((const char *)arg1);
 			f->R.rax=remove(arg1);
 			break;
 		case SYS_OPEN:							//  7 파일 열기
-			// printf("SYS_OPEN\n");
 			check_valid_string((const char *)arg1);
 			f->R.rax=open(arg1);
 			break;
 		case SYS_FILESIZE:						//  8 파일 크기 조회
-			// printf("SYS_FILESIZE\n");
 			f->R.rax=filesize(arg1);
 			break;
 		case SYS_READ:							//  9 파일에서 읽기
-			// printf("SYS_READ\n");
 			check_valid_buffer(f->R.rsi, f->R.rdx, f->rsp, 1);
-			// check_address((void *)arg2);
 			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_WRITE:							//  10 파일에 쓰기
-			// printf("SYS_WRITE\n");
 			check_valid_buffer(f->R.rsi, f->R.rdx, f->rsp, 0);
 			f->R.rax=write((int)arg1,(void *)arg2,(unsigned)arg3);
 			break;
 		case SYS_SEEK:							//  11 파일 내 위치 변경
-			// printf("SYS_SEEK\n");
 			seek(arg1,arg2);
 			break;
 		case SYS_TELL:							//  12 파일의 현재 위치 반환
-			// printf("SYS_TELL\n");
 			f->R.rax=tell(arg1);
 			break;
 		case SYS_CLOSE:							//  13 파일 닫기
-			// printf("SYS_CLOSE\n");
 			close(arg1);
 			break;
+		case SYS_MMAP:
+			f->R.rax = mmap(arg1, arg2, arg3, arg4, arg5);
+			break;
+		// case SYS_MUNMAP:
+		// 	munmap();
+		// 	break;	
 		default:
-			// printf("default;\n");
 			break;
 	}
-	// printf("-------------------------------\n\n");
 }
 
 void halt (void){
@@ -319,12 +309,6 @@ void close (int fd){	//(oom_update)
 	file_close(f);
 }
 
-
-bool user_memory_valid(void *r) {
-    return r != NULL && is_user_vaddr(r);
-}
-
-
 struct page * check_address(void *addr) {
     if (is_kernel_vaddr(addr))
     {
@@ -353,10 +337,19 @@ void check_valid_string(const char *str) {
     }
 }
 
+
 struct file *get_file_by_descriptor(int fd)
 {
 	if (fd < 3 || fd > 128)
 		return NULL;
 	struct thread *t = thread_current();
 	return t->fd_table[fd];
+}
+
+void *mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+	return do_mmap(addr, length, writable, get_file_by_descriptor(fd), offset);
+}
+
+void munmap (void *addr) {
+	return;
 }

@@ -42,7 +42,6 @@ vm_init (void) {
 	/* NOTE: The beginning where custom code is added */
 	list_init(&frame_table);
     lock_init(&frame_table_lock);
-	lock_init(&spt_kill_lock);
 	/* NOTE: The end where custom code is added */
 }
 
@@ -269,22 +268,6 @@ vm_claim_page(void *va) {
     /* 3. Check if the page is already present in the supplemental page table */
     struct page *page = spt_find_page(spt, page_va);
     if (page == NULL) {
-        // /* 4. Allocate and initialize a new page structure */
-        // page = malloc(sizeof(struct page));
-        // if (page == NULL) {
-        //     return false; /* 메모리 할당 실패 */
-        // }
-
-        // page->va = page_va;
-        // page->writable = true; /* 필요에 따라 설정 */
-        // page->frame = NULL; /* 초기에는 프레임이 없음 */
-        // page->is_loaded = false; /* 페이지가 아직 로드되지 않음 */
-
-        // /* 5. 페이지를 보조 페이지 테이블에 삽입 */
-        // if (!spt_insert_page(spt, page)) {
-        //     free(page);
-        //     return false; /* 삽입 실패 */
-        // }
 		return false;
     }
 
@@ -378,9 +361,6 @@ supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
 	/* NOTE: The beginning where custom code is added */
-	// lock_acquire(&spt_kill_lock);
-	// hash_destroy(&spt->pages, page_destructor);
 	hash_clear (&spt->pages, page_destructor);
-	// lock_release(&spt_kill_lock);
 	/* NOTE: The end where custom code is added */
 }

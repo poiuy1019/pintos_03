@@ -45,7 +45,6 @@ struct thread;
 /* NOTE: The beginning where custom code is added */
 static struct list frame_table;
 static struct lock frame_table_lock;
-static struct lock spt_kill_lock;
 /* NOTE: The end where custom code is added */
 
 struct lazy_load_info {
