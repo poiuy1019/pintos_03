@@ -3,6 +3,7 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "threads/mmu.h"
 
 /* NOTE: The beginning where custom code is added */
 static uint64_t
@@ -153,6 +154,7 @@ spt_insert_page (struct supplemental_page_table *spt, struct page *page) {
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	hash_delete(spt, &page->hash_elem);
 	vm_dealloc_page (page);
 	return true;
 }
@@ -220,7 +222,7 @@ vm_handle_wp (struct page *page UNUSED) {
 /* Return true on success */
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr,
-		bool user UNUSED, bool write UNUSED, bool not_present ) {
+		bool user UNUSED, bool write, bool not_present ) {
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
@@ -231,12 +233,15 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
     }
 
 	if(not_present) {
-		//rsp - 8
+		//rsp - 8 은 왜 해야되지? 왜 8바이트만 뺴면 되지?
 		if (addr <= USER_STACK && addr >= USER_STACK - (1 << 20) && addr >= f->rsp - 8) {
 			vm_stack_growth(addr);
 		}
 		page = spt_find_page(spt, addr);
 		if (page == NULL){
+			return false;
+		}
+		if(write && !page->writable) {
 			return false;
 		}
 		return vm_do_claim_page(page);
@@ -253,6 +258,7 @@ vm_dealloc_page (struct page *page) {
 	destroy (page);
 	free (page);
 }
+
 /*good*/
 /* Claim the page that allocate on VA. */
 bool

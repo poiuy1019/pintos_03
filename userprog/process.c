@@ -742,14 +742,8 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* Zero the remaining bytes */
     memset(kva + page_read_bytes, 0, page_zero_bytes);
 
-    // if (file_read_at(file, page->frame->kva, read_bytes, offset) != (int)read_bytes) {
-    //     free(info);
-    //     return false;
-    // }
-    // memset(page->frame->kva + read_bytes, 0, zero_bytes);
     return true;
 	/* NOTE: The end where custom code is added */
-
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -798,6 +792,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
             return false;
         }
 		/* NOTE: The end where custom code is added */
+		// struct page *page = spt_find_page(&thread_current()->spt, upage);
+		// page->file.file = file;
+        // page->file.offset = ofs;
+        // page->file.page_read_bytes = page_read_bytes;
+        // page->file.page_zero_bytes = page_zero_bytes;
+        // page->writable = writable;
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
@@ -829,6 +829,7 @@ setup_stack (struct intr_frame *if_) {
 		return false;
     }
 	if_->rsp = USER_STACK;
+	// thread_current()->stack_bottom = stack_bottom;
 	return true;
 	/* NOTE: The end where custom code is added */
 }

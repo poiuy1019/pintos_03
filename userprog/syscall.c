@@ -15,6 +15,7 @@
 
 #include "threads/synch.h"
 #include <string.h>
+#include "vm/file.h"
 
 typedef uint32_t disk_sector_t;
 
@@ -45,6 +46,7 @@ void syscall_handler (struct intr_frame *);
 bool user_memory_valid(void *r);
 struct file *get_file_by_descriptor(int fd);
 struct lock syscall_lock;
+void *my_mmap(void *addr, size_t length, int writable, int fd, off_t offset);
 
 /* System call.
  *
@@ -132,12 +134,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			break;
 		case SYS_READ:							//  9 파일에서 읽기
 			// printf("SYS_READ\n");
-			check_address((void *)arg2);
-			f->R.rax=read(arg1,arg2,arg3);
+			check_valid_buffer(f->R.rsi, f->R.rdx, f->rsp, 1);
+			// check_address((void *)arg2);
+			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_WRITE:							//  10 파일에 쓰기
 			// printf("SYS_WRITE\n");
-			check_address((void *)arg2);
+			check_valid_buffer(f->R.rsi, f->R.rdx, f->rsp, 0);
 			f->R.rax=write((int)arg1,(void *)arg2,(unsigned)arg3);
 			break;
 		case SYS_SEEK:							//  11 파일 내 위치 변경
@@ -151,6 +154,14 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_CLOSE:							//  13 파일 닫기
 			// printf("SYS_CLOSE\n");
 			close(arg1);
+			break;
+		case SYS_MMAP:
+			f->R.rax = my_mmap(arg1, arg2, arg3, arg4, arg5);
+			break;
+		case SYS_MUNMAP:
+		 	if (user_memory_valid((void *)arg1)) {
+        		my_munmap(arg1); // 유효한 주소일 경우 do_munmap 호출
+    		}
 			break;
 		default:
 			// printf("default;\n");
@@ -244,7 +255,6 @@ int read (int fd, void *buffer, unsigned size){
 		}
 		return i;
 	}
-	
     struct file *file = get_file_by_descriptor(fd);
 	if (file == NULL || fd == STD_OUT || fd == STD_ERR)  // 빈 파일, stdout, stderr를 읽으려고 할 경우
 		return -1;
@@ -322,47 +332,21 @@ bool user_memory_valid(void *r) {
     return r != NULL && is_user_vaddr(r);
 }
 
-bool user_string_valid(const char *str) {
-    struct thread *current = thread_current();
-    uint64_t *pml4 = current->pml4;
-
-    if (str == NULL || !is_user_vaddr(str)) {
-        return false;
-    }
-
-    while (true) {
-        if (pml4_get_page(pml4, (void *)str) == NULL) {
-            return false;
-        }
-        char c = *str;
-        if (c == '\0') {
-            break;
-        }
-        str++;
-    }
-
-    return true;
-}
-
-void check_address(const void *addr) {
-    if (addr == NULL || !is_user_vaddr(addr)) {
+struct page * check_address(void *addr) {
+    if (is_kernel_vaddr(addr))
+    {
         exit(-1);
     }
+    return spt_find_page(&thread_current()->spt, addr);
 }
 
-void check_valid_buffer(void *buffer, unsigned size, bool to_write) {
-    char *buf = (char *)buffer;
-    char *end = buf + size;
-    while (buf < end) {
-        check_address(buf);
-
-        if (to_write) {
-            // Additional checks for write permissions can be added here.
-        }
-
-        // Move to the next page
-        buf = (char *)pg_round_down(buf);
-        buf += PGSIZE;
+void check_valid_buffer(void* buffer, unsigned size, void* rsp, bool to_write) {
+    for (int i = 0; i < size; i++) {
+        struct page* page = check_address(buffer + i);    // 인자로 받은 buffer부터 buffer + size까지의 크기가 한 페이지의 크기를 넘을수도 있음
+        if(page == NULL)
+            exit(-1);
+        if(to_write == true && page->writable == false)
+            exit(-1);
     }
 }
 
@@ -382,4 +366,24 @@ struct file *get_file_by_descriptor(int fd)
 		return NULL;
 	struct thread *t = thread_current();
 	return t->fd_table[fd];
+}
+
+void *my_mmap(void *addr, size_t length, int writable, int fd, off_t offset) {
+	if (fd == 0 || fd == 1){
+        exit(-1);
+	}
+
+	if (spt_find_page(&thread_current()->spt, addr))
+        return NULL;
+
+	struct file *real_file = get_file_by_descriptor(fd);
+
+	if (real_file == NULL){
+		return NULL;
+	}
+	return do_mmap(addr, length, writable, real_file, offset);
+}
+
+void my_munmap(void *addr) {
+	do_munmap(addr);
 }
