@@ -2,6 +2,7 @@
    values are as they should be. */
 
 #include <string.h>
+#include <stdlib.h>
 #include "tests/arc4.h"
 #include "tests/lib.h"
 #include "tests/main.h"

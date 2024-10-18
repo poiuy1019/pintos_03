@@ -555,13 +555,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	// hex_dump((uintptr_t)if_->rsp, (void *)if_->rsp, USER_STACK - (uintptr_t)if_->rsp, true);
 	success = true;
 
-
+	
 done:
 	/* We arrive here whether the load is successful or not. */
-	// file_close (file);		// minjae's 경우 없앰
-	// if (fn_copy != NULL) {
-    //     palloc_free_page(fn_copy);
-    // }
 	return success;
 }
 
@@ -714,8 +710,7 @@ install_page (void *upage, void *kpage, bool writable) {
  * If you want to implement the function for only project 2, implement it on the
  * upper block. */
 
-static bool
-lazy_load_segment (struct page *page, void *aux) {
+static bool lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
@@ -741,16 +736,8 @@ lazy_load_segment (struct page *page, void *aux) {
 
 	/* Zero the remaining bytes */
     memset(kva + page_read_bytes, 0, page_zero_bytes);
-
-    // if (file_read_at(file, page->frame->kva, read_bytes, offset) != (int)read_bytes) {
-    //     free(info);
-    //     return false;
-    // }
-    // memset(page->frame->kva + read_bytes, 0, zero_bytes);
-    free(info);
     return true;
 	/* NOTE: The end where custom code is added */
-
 }
 
 /* Loads a segment starting at offset OFS in FILE at address

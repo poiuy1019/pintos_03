@@ -47,8 +47,8 @@ vm_init (void) {
 /* Get the type of the page. This function is useful if you want to know the
  * type of the page after it will be initialized.
  * This function is fully implemented now. */
-enum vm_type
-page_get_type (struct page *page) {
+enum vm_type /*^*/
+page_get_type (struct page *page) { 
 	int ty = VM_TYPE (page->operations->type);
 	switch (ty) {
 		case VM_UNINIT:
@@ -119,42 +119,42 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
-struct page *
+struct page * /*^*/
 spt_find_page (struct supplemental_page_table *spt, void *va) {
 	// struct page *page = NULL;
 	/* TODO: Fill this function. */
 
 	/* NOTE: The beginning where custom code is added */
-	struct page page;
+	struct page *page = (struct page *)malloc(sizeof(struct page));
 	struct hash_elem *found_elem;
 
-	page.va = pg_round_down(va);
-	found_elem = hash_find(&spt->pages, &page.hash_elem);
-
+	page->va = pg_round_down(va);
+	found_elem = hash_find(&spt->pages, &page->hash_elem);
+	free(page);      
 	return found_elem != NULL ? hash_entry(found_elem, struct page, hash_elem) : NULL;
 	/* NOTE: The end where custom code is added */
 	// return page;
 }
 
 /* Insert PAGE into spt with validation. */
-bool
+bool 
 spt_insert_page (struct supplemental_page_table *spt, struct page *page) {
-	// int succ = false;
 	/* TODO: Fill this function. */
 	/* NOTE: The beginning where custom code is added */
 	if (hash_insert(&spt->pages, &page->hash_elem)) {
-        // free(page);
         return false;
     }
     return true;
 	/* NOTE: The end where custom code is added */
-	// return succ;
 }
 
-void
+void /*^*/
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	/* NOTE: The beginning where custom code is added */
+	hash_delete(&thread_current()->spt.pages, &page->hash_elem);
 	vm_dealloc_page (page);
 	return true;
+	/* NOTE: The end where custom code is added */
 }
 
 /* Get the struct frame, that will be evicted. */
@@ -180,17 +180,18 @@ vm_evict_frame (void) {
  * and return it. This always return valid address. That is, if the user pool
  * memory is full, this function evicts the frame to get the available memory
  * space.*/
-static struct frame *
-vm_get_frame (void) {
-	// struct frame *frame = NULL;
+static struct frame * vm_get_frame (void) { /*^*/
 	/* TODO: Fill this function. */
 	/* NOTE: The beginning where custom code is added */
 	struct frame *frame = malloc(sizeof(struct frame));
+<<<<<<< Updated upstream
 	frame->kva = palloc_get_page(PAL_USER);
 	frame->page = NULL;
+=======
+	frame->kva = palloc_get_page(PAL_USER|PAL_ZERO);
+>>>>>>> Stashed changes
 
 	if (frame->kva == NULL)
-		// PANIC("todo");
 		return NULL;
 
 	lock_acquire(&frame_table_lock);
@@ -227,9 +228,24 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
     }
 	struct page *page = spt_find_page(spt, fault_addr);
 
+<<<<<<< Updated upstream
 	if (page == NULL)
         return false;
     
+=======
+	if(not_present) {
+
+		if (addr <= USER_STACK && addr >= USER_STACK - (1 << 20) && addr >= f->rsp - 8) {
+			vm_stack_growth(addr);
+		}
+		page = spt_find_page(spt, addr);
+		if (page == NULL || (write == 1 && page->writable == 0)) {
+			return false;
+		}
+		return vm_do_claim_page(page);
+	}
+
+>>>>>>> Stashed changes
 	/* NOTE: The end where custom code is added */
 	return vm_do_claim_page (page);
 }
@@ -244,17 +260,12 @@ vm_dealloc_page (struct page *page) {
 
 /* Claim the page that allocate on VA. */
 bool
-vm_claim_page(void *va) {
+vm_claim_page(void *va) { /*^*/
 	/* TODO: Fill this function */
+
 	/* NOTE: The beginning where custom code is added */
-    /* 1. Round down the virtual address to the nearest page boundary */
     void *page_va = pg_round_down(va);
-
-    /* 2. Retrieve the current thread's supplemental page table */
-    struct supplemental_page_table *spt = &thread_current()->spt;
-
-    /* 3. Check if the page is already present in the supplemental page table */
-    struct page *page = spt_find_page(spt, page_va);
+    struct page *page = spt_find_page(&thread_current()->spt, page_va);
     if (page == NULL) {
         /* 4. Allocate and initialize a new page structure */
         page = malloc(sizeof(struct page));
@@ -273,28 +284,18 @@ vm_claim_page(void *va) {
             return false; /* 삽입 실패 */
         }
     }
-
-    /* 6. 페이지가 이미 로드되어 있는지 확인 */
-    if (page->is_loaded) {
-        /* 페이지가 이미 로드되어 있으므로 추가 작업 없이 성공 */
-        return true;
-    }
-
-    /* 7. 페이지를 실제로 할당하고 매핑 */
-    if (!vm_do_claim_page(page)) {
-        return false; /* 페이지 할당 실패 */
-    }
-
-    /* 8. 페이지가 성공적으로 로드됨을 표시 */
-    page->is_loaded = true;
 	/* NOTE: The end where custom code is added */
-    return true;
+    return vm_do_claim_page(page);
 }
 
+<<<<<<< Updated upstream
 
 
 
 /* Claim the PAGE and set up the mmu. */
+=======
+/* Claim the PAGE and set up the mmu. */ /*^*/
+>>>>>>> Stashed changes
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
@@ -306,19 +307,23 @@ vm_do_claim_page (struct page *page) {
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	/* NOTE: The beginning where custom code is added */
 	if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) {
-		/* TODO: may be need dealloc page and frame */
         return false;
     }
 	/* NOTE: The end where custom code is added */
 	return swap_in (page, frame->kva);
 }
 
+<<<<<<< Updated upstream
 /* Initialize new supplemental page table */
+=======
+
+/* Initialize new supplemental page table */ /*^*/
+>>>>>>> Stashed changes
 void
 supplemental_page_table_init (struct supplemental_page_table *spt) {
 	/* NOTE: The beginning where custom code is added */
 	// ASSERT(spt != NULL);
-	hash_init(&spt->pages, spt_hash_func, spt_less_func, NULL);
+	hash_init(spt, spt_hash_func, spt_less_func, NULL);
 	/* NOTE: The end where custom code is added */
 }
 
@@ -338,30 +343,40 @@ supplemental_page_table_copy(struct supplemental_page_table *dst, struct supplem
 			vm_alloc_page_with_initializer(VM_ANON, upage, writable, init, aux);
 			continue;
 		}
+		else if (type == VM_FILE) {
+            struct lazy_load_info *info = malloc(sizeof(struct lazy_load_info));
+            info->file = src_page->file.file;
+            info->offset = src_page->file.offset;
+            info->page_read_bytes = src_page->file.page_read_bytes;
 
+            if (!vm_alloc_page_with_initializer(type, upage, writable, NULL, info))
+                return false;
+
+            struct page *dst_page = spt_find_page(dst, upage);
+            file_backed_initializer(dst_page, type, NULL);
+            dst_page->frame = src_page->frame;
+            pml4_set_page(thread_current()->pml4, dst_page->va, src_page->frame->kva, src_page->writable);
+        }
 		if (!vm_alloc_page(type, upage, writable)) {
 			return false;
 		}
-
 		if (!vm_claim_page(upage)) {
 			return false;
 		}
 
 		struct page *dst_page = spt_find_page(dst, upage);
-
 		memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
 	}
 	return true;
 }
 
-/* Free the resource hold by the supplemental page table */
+/* Free the resource hold by the supplemental page table */ /*^*/
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+
 	/* NOTE: The beginning where custom code is added */
-	// lock_acquire(&spt_kill_lock);
 	hash_clear(&spt->pages, page_destructor);
-	// lock_release(&spt_kill_lock);
 	/* NOTE: The end where custom code is added */
 }

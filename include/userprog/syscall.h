@@ -1,6 +1,8 @@
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
 #include <stdbool.h>
+#include <stddef.h>
+#include "include/filesys/off_t.h"; //jinwoo_mmap
 
 typedef int pid_t;
 extern struct lock syscall_lock;
@@ -20,5 +22,10 @@ int write (int fd, const void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell (int fd);
 void close (int fd);
+
+// #ifdef VM
+void *mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+void munmap (void *addr);
+// #endif
 
 #endif /* userprog/syscall.h */

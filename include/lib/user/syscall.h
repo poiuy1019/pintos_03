@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <debug.h>
 #include <stddef.h>
+#include "include/filesys/off_t.h" //jinwoo_mmap
 
 /* Process identifier. */
 typedef int pid_t;
@@ -37,10 +38,6 @@ unsigned tell (int fd);
 void close (int fd);
 
 int dup2(int oldfd, int newfd);
-
-/* Project 3 and optionally project 4. */
-void *mmap (void *addr, size_t length, int writable, int fd, off_t offset);
-void munmap (void *addr);
 
 /* Project 4 only. */
 bool chdir (const char *dir);

@@ -69,7 +69,6 @@ struct page {
 	/* NOTE: The beginning where custom code is added */
 	bool writable;
 	struct hash_elem hash_elem;
-	bool is_loaded;
 	/* NOTE: The end where custom code is added */
 
 	/* Per-type data are binded into the union.
