@@ -25,8 +25,8 @@
         "stdint.h": "c",
         "interrupt.h": "c",
         "xutility": "c",
-        // "inspect.h": "c",
-        // "vm.h": "c",
-        // "malloc.h": "c"
+        "bitmap.h": "c",
+        "vm.h": "c",
+        "inspect.h": "c"
     }
 }

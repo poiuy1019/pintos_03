@@ -4,6 +4,11 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "threads/mmu.h"
+#include "vm/file.h"
+#include "bitmap.h"
+
+static struct frame *clock_hand = NULL; // 현재 시계 핸드 (원형 탐색)
+struct bitmap *swap_table;
 
 /* NOTE: The beginning where custom code is added */
 static uint64_t
@@ -61,7 +66,7 @@ page_get_type (struct page *page) {
 
 /* Helpers */
 static struct frame *vm_get_victim (void);
-static bool vm_do_claim_page (struct page *page);
+
 static struct frame *vm_evict_frame (void);
 
 /* Create the pending page object with initializer. If you want to create a
@@ -159,24 +164,53 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	return true;
 }
 
+
+
 /* Get the struct frame, that will be evicted. */
 static struct frame *
 vm_get_victim (void) {
-	struct frame *victim = NULL;
-	 /* TODO: The policy for eviction is up to you. */
+    struct frame *victim = NULL;
 
-	return victim;
+    while (true) {
+        if (clock_hand == NULL) {
+            clock_hand = list_front(&frame_table);
+        }
+
+        if (!clock_hand->page->accessed) {
+            victim = clock_hand;
+            break;
+        } else {
+            clock_hand->page->accessed = false;
+            clock_hand = list_next(&clock_hand->frame_elem);
+            
+            if (clock_hand == NULL) {
+                clock_hand = list_front(&frame_table);
+            }
+        }
+    }
+    return victim; 
 }
 
 /* Evict one page and return the corresponding frame.
- * Return NULL on error.*/
+ * Return NULL on error. */
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
-	/* TODO: swap out the victim and return the evicted frame. */
+    struct frame *victim = vm_get_victim();  // victim 선택
 
-	return NULL;
+    if (victim) {
+        struct page *page = victim->page;
+
+        // 페이지의 swap_out 함수를 호출 (타입에 따라 처리됨)
+        if (!swap_out(page)) {
+            return NULL;  // 스왑 아웃 실패 시 NULL 반환
+        }
+
+        return victim;  // 스왑 아웃 성공 시 victim 반환
+    }
+    
+    return NULL;  // victim이 없으면 NULL 반환
 }
+
 
 /* palloc() and get frame. If there is no available page, evict the page
  * and return it. This always return valid address. That is, if the user pool
@@ -295,7 +329,7 @@ vm_claim_page(void *va) {
 }
 
 /* Claim the PAGE and set up the mmu. */
-static bool
+bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
 
@@ -323,39 +357,109 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 	/* NOTE: The end where custom code is added */
 }
 
-bool
-supplemental_page_table_copy(struct supplemental_page_table *dst, struct supplemental_page_table *src) {
-	struct hash_iterator i;
-	hash_first(&i, &src->pages);
-	while (hash_next(&i)) {
-		struct page *src_page = hash_entry(hash_cur(&i), struct page, hash_elem);
+// bool
+// supplemental_page_table_copy(struct supplemental_page_table *dst, struct supplemental_page_table *src) {
+// 	struct hash_iterator i;
+// 	hash_first(&i, &src->pages);
+// 	while (hash_next(&i)) {
+// 		struct page *src_page = hash_entry(hash_cur(&i), struct page, hash_elem);
+// 		enum vm_type type = src_page->operations->type;
+// 		void *upage = src_page->va;
+// 		bool writable = src_page->writable;
+
+// 		if (type == VM_UNINIT) {
+// 			vm_initializer *init = src_page->uninit.init;
+// 			void *aux = src_page->uninit.aux;
+// 			vm_alloc_page_with_initializer(VM_ANON, upage, writable, init, aux);
+// 			continue;
+// 		}
+
+// 		if (!vm_alloc_page(type, upage, writable)) {
+// 			return false;
+// 		}
+
+// 		if (!vm_claim_page(upage)) {
+// 			return false;
+// 		}
+
+// 		struct page *dst_page = spt_find_page(dst, upage);
+
+// 		memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
+// 	}
+// 	return true;
+// }
+
+/* Copy supplemental page table from src to dst */
+bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, struct supplemental_page_table *src UNUSED) {
+	// /**/printf("\n------- supplemental_page_table_copy -------");
+	struct hash_iterator iter;
+	struct page *dst_page;
+	struct aux *aux;
+
+	hash_first(&iter, &src->pages);
+
+	while (hash_next(&iter)) {
+		struct page *src_page = hash_entry(hash_cur(&iter), struct page, hash_elem);
 		enum vm_type type = src_page->operations->type;
 		void *upage = src_page->va;
 		bool writable = src_page->writable;
 
-		if (type == VM_UNINIT) {
-			vm_initializer *init = src_page->uninit.init;
-			void *aux = src_page->uninit.aux;
-			vm_alloc_page_with_initializer(VM_ANON, upage, writable, init, aux);
-			continue;
+		switch (type) {
+			case VM_UNINIT:  // src 타입이 initialize 되지 않았을 경우
+				// mytodo : 어째서 VM_UNINIT 타입을 다른 타입으로 변경한 후에 초기화 하는지 의문
+				if (!vm_alloc_page_with_initializer(page_get_type(src_page), upage, writable, src_page->uninit.init, src_page->uninit.aux)){
+					// /**/printf("\n------- supplemental_page_table_copy end (!vm_alloc_page_with_initializer(page_get_type(src_page), upage, writable, src_page->uninit.init, src_page->uninit.aux)) -------");
+					goto err;
+				}
+				break;
+
+			case VM_ANON:                                   // src 타입이 anon인 경우
+				if (!vm_alloc_page(type, upage, writable)){  // UNINIT 페이지 생성 및 초기화
+					// /**/printf("\n------- supplemental_page_table_copy end (!vm_alloc_page(type, upage, writable)) -------");
+					goto err;
+				}
+				if (!vm_claim_page(upage)){  // 물리 메모리와 매핑하고 initialize
+					// /**/printf("\n------- supplemental_page_table_copy end (!vm_claim_page(upage)) -------");
+					goto err;
+				}
+				struct page *dst_page = spt_find_page(dst, upage);  // 대응하는 물리 메모리 데이터 복제
+				memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
+
+				/** Project 3: Copy On Write (Extra) - 메모리에 load된 데이터를 write하지 않는 이상 똑같은 메모리를 사용하는데
+				 *  2개의 복사본을 만드는 것은 메모리가 낭비가 난다. 따라서 write 요청이 들어왔을 때만 해당 페이지에 대한 물리메모리를
+				 *  할당하고 맵핑하면 된다. */
+				// if (!vm_copy_claim_page(dst, upage, src_page->frame->kva, writable))  // 물리 메모리와 매핑하고 initialize
+				//     goto err;
+
+				break;
+
+			case VM_FILE:  // src 타입이 FILE인 경우
+				if (!vm_alloc_page_with_initializer(type, upage, writable, NULL, &src_page->file))
+					goto err;
+
+				dst_page = spt_find_page(dst, upage);  // 대응하는 물리 메모리 데이터 복제
+				if (!file_backed_initializer(dst_page, type, NULL))
+					goto err;
+
+				dst_page->frame = src_page->frame;
+				if (!pml4_set_page(thread_current()->pml4, dst_page->va, src_page->frame->kva, src_page->writable))
+					goto err;
+
+				break;
+
+			default:
+				// /**/printf("\n------- supplemental_page_table_copy end default -------");
+				goto err;
 		}
-
-		if (!vm_alloc_page(type, upage, writable)) {
-			return false;
-		}
-
-		if (!vm_claim_page(upage)) {
-			return false;
-		}
-
-		struct page *dst_page = spt_find_page(dst, upage);
-
-		memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
 	}
+	// /**/printf("\n------- supplemental_page_table_copy end true -------");
 	return true;
+
+err:
+	return false;
 }
 
-/* Free the resource hold by the supplemental page table */
+// /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
@@ -367,3 +471,21 @@ supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* NOTE: The end where custom code is added */
 }
 
+// void
+// supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+// 	/* TODO: Destroy all the supplemental_page_table hold by thread and
+// 	 * TODO: writeback all the modified contents to the storage. */
+
+// 	struct hash_iterator i;
+	
+// 	hash_first (&i, &spt->pages);
+// 	while (hash_next (&i)) {
+// 		struct page *page = hash_entry (hash_cur (&i), struct page, hash_elem);
+
+// 		if (page->operations->type == VM_FILE) {
+// 			file_backed_destroy(page);
+// 		}
+// 		destroy(page);
+// 	}
+// 	hash_clear(&spt->pages, page_destructor);
+// }

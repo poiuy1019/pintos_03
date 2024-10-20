@@ -41,8 +41,10 @@ struct page_operations;
 struct thread;
 
 #define VM_TYPE(type) ((type) & 7)
+#define FRAME_COUNT 1024
 
 /* NOTE: The beginning where custom code is added */
+extern struct bitmap *swap_table;
 static struct list frame_table;
 static struct lock frame_table_lock;
 static struct lock spt_kill_lock;
@@ -70,6 +72,8 @@ struct page {
 	bool writable;
 	struct hash_elem hash_elem;
 	bool is_loaded;
+	size_t swap_slot;
+	bool accessed;
 	/* NOTE: The end where custom code is added */
 
 	/* Per-type data are binded into the union.
@@ -139,6 +143,7 @@ bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,
 		bool writable, vm_initializer *init, void *aux);
 void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
+bool vm_do_claim_page (struct page *page);
 enum vm_type page_get_type (struct page *page);
 
 #endif  /* VM_VM_H */
